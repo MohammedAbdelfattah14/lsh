@@ -17,12 +17,50 @@
 #include <stdio.h>
 #include <string.h>
 
+#define MAX_HISTORY 100
+char* history_list[MAX_HISTORY]; // Array of strings to store commands
+int history_count = 0;           // Keeps track of how many commands we have
+
+// Helper function to save a command
+void add_to_history(char* line) {
+    // Only save if the line isn't empty and we haven't hit the max limit
+    if (line != NULL && line[0] != '\n' && line[0] != '\0') {
+        if (history_count < MAX_HISTORY) {
+            // strdup duplicates the string in memory so it doesn't get overwritten
+            history_list[history_count] = strdup(line);
+            history_count++;
+        }
+        // Note: A complete implementation might shift old commands out when full, 
+        // but this simple array is usually enough for this project scope.
+    }
+}
+
+// Declare the external environment variable array
+extern char** environ;
+
+int lsh_env(char** args) {
+    int i = 0;
+
+    // Loop through the environment array until we hit a NULL pointer
+    while (environ[i] != NULL) {
+        // The strings in 'environ' are already formatted as "KEY=VALUE"
+        printf("%s\n", environ[i]);
+        i++;
+    }
+
+    return 1; // Keep the shell running
+}
+
 /*
   Function Declarations for builtin shell commands:
  */
+int lsh_env(char** args);
 int lsh_cd(char **args);
 int lsh_help(char **args);
 int lsh_exit(char **args);
+int lsh_pwd(char **args);
+int lsh_echo(char **args);
+int lsh_history(char **args);
 
 /*
   List of builtin commands, followed by their corresponding functions.
@@ -30,13 +68,21 @@ int lsh_exit(char **args);
 char *builtin_str[] = {
   "cd",
   "help",
-  "exit"
+  "exit",
+  "pwd",
+  "echo",
+  "history",
+  "env"
 };
 
 int (*builtin_func[]) (char **) = {
   &lsh_cd,
   &lsh_help,
-  &lsh_exit
+  &lsh_exit,
+  &lsh_pwd,
+  &lsh_echo,
+  &lsh_history,
+  &lsh_env
 };
 
 int lsh_num_builtins() {
@@ -46,6 +92,44 @@ int lsh_num_builtins() {
 /*
   Builtin function implementations.
 */
+
+
+// Builtin PWD function 
+int lsh_pwd(char** args) {
+    char cwd[1024]; // Buffer to hold the directory path
+
+    // getcwd fills the buffer with the path. Returns NULL on failure.
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        printf("%s\n", cwd);
+    }
+    else {
+        perror("lsh"); // Prints an error message if getcwd fails
+    }
+    return 1; // Return 1 to keep the shell running
+}
+
+// Builtin echo function
+int lsh_echo(char** args) {
+    int i = 1; // Start at index 1 to skip the word "echo" itself
+
+    // Loop through the arguments until we hit a NULL pointer
+    while (args[i] != NULL) {
+        printf("%s ", args[i]);
+        i++;
+    }
+    printf("\n"); // Print a final newline character
+
+    return 1; // Keep the shell running
+}
+
+// Builtin history function
+int lsh_history(char** args) {
+    // Loop through the saved history and print them numbered
+    for (int i = 0; i < history_count; i++) {
+        printf("%d %s\n", i + 1, history_list[i]);
+    }
+    return 1;
+}
 
 /**
    @brief Builtin command: change directory.
@@ -257,6 +341,26 @@ void lsh_loop(void)
     printf("> ");
     line = lsh_read_line();
     args = lsh_split_line(line);
+
+    if (args[0] != NULL) {
+
+        int is_builtin = 0;
+
+        // 3. Loop through all registered built-in commands to check for a match
+        // lsh_num_builtins() is a helper function already provided in the starter code
+        for (int i = 0; i < lsh_num_builtins(); i++) {
+            // strcmp compares two strings. It returns 0 if they match exactly.
+            if (strcmp(args[0], builtin_str[i]) == 0) {
+                is_builtin = 1;
+                break;
+            }
+        }
+
+        // 4. If the command IS one of the six built-ins, add it to history
+        if (is_builtin)
+            add_to_history(args[0]);
+    }
+
     status = lsh_execute(args);
 
     free(line);
